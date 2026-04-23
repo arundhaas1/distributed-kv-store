@@ -2,14 +2,18 @@ package io.arundhaas.kvstore;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Objects;
 
 public class KvStore<K, V> implements AutoCloseable{
 	private final HashMap<K, V> kvStore = new HashMap<>();
 	private final WAL wal;
 	
-	public KvStore(String filePath) throws FileNotFoundException{
+	public KvStore(String filePath) throws FileNotFoundException, IOException{
+		refetch(filePath);
 		this.wal = new WAL(filePath);
 	}
 	
@@ -36,6 +40,32 @@ public class KvStore<K, V> implements AutoCloseable{
 	@Override
 	public void close() throws IOException {
 		wal.close();
+	}
+	
+	@SuppressWarnings("unchecked")
+	private void refetch(String filePath) throws IOException {
+		Path path = Path.of(filePath);
+		if(!Files.exists(path)) return;
+		
+		List<String> lines = Files.readAllLines(path); 
+		for(String line: lines) {
+			String[] parts = line.split("\\|", -1);
+			if(parts.length < 2) continue;
+			
+			String op = parts[0];
+			String key = parts[1];
+			String value = (parts.length > 2) ? parts[2]: "";
+			
+			switch(op) {
+			case "PUT":
+				kvStore.put((K)key, (V)value);
+				break;
+			case "DELETE":
+				kvStore.remove((K) key);
+				break;
+			}
+			
+		}
 	}
 	
 }
