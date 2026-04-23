@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.Objects;
 
 public class KvStore<K, V> {
-	HashMap<K, V> kvStore = new HashMap<>();
+	private final HashMap<K, V> kvStore = new HashMap<>();
 	
 	public void put(K key, V value) {
 		Objects.requireNonNull(key, "Key cannot be null");
