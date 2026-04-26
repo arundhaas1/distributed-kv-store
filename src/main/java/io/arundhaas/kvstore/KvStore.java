@@ -6,15 +6,22 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public class KvStore<K, V> implements AutoCloseable{
-	private final HashMap<K, V> kvStore = new HashMap<>();
+	private HashMap<K, V> kvStore = new HashMap<>();
+	
+	private final int SNAPSHOT_EVERY_N_WRITES = 1000;
 	private final WAL wal;
+	private final String snapshotPath;
+	private int writeCount = 0;
 	
 	public KvStore(String filePath) throws FileNotFoundException, IOException{
-		refetch(filePath);
 		this.wal = new WAL(filePath);
+		this.snapshotPath =  filePath + ".snapshot";
+		this.kvStore = (HashMap<K, V>) Snapshot.load(snapshotPath);
+		refetch(filePath);
 	}
 	
 	public void put(K key, V value) throws IOException {
@@ -22,6 +29,7 @@ public class KvStore<K, V> implements AutoCloseable{
 		
 		wal.append("PUT", String.valueOf(key), String.valueOf(value));
 		kvStore.put(key, value);
+		maybeSnapshot();
 	}
 	
 	public V get(K key) throws IOException {
@@ -35,6 +43,7 @@ public class KvStore<K, V> implements AutoCloseable{
 		
 		wal.append("DELETE", String.valueOf(key), "");
 		kvStore.remove(key);
+		maybeSnapshot();
 	}
 
 	@Override
@@ -67,5 +76,14 @@ public class KvStore<K, V> implements AutoCloseable{
 			
 		}
 	}
+	
+	private void maybeSnapshot() throws IOException {                                                                                                                                                                  
+	      writeCount++;                           
+	      if (writeCount >= SNAPSHOT_EVERY_N_WRITES) {                                                                                                                                                                   
+	          Snapshot.write(snapshotPath, (Map) kvStore);
+	          wal.reset();
+	          writeCount = 0;                                                                                                                                                                                            
+	      }                                   
+	  }
 	
 }
