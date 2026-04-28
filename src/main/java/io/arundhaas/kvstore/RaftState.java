@@ -1,0 +1,14 @@
+ package io.arundhaas.kvstore;                                                                                                                                                                                                              
+                                                                                                                                                                                                                                             
+  /**                                                                                                                                                                                                                                        
+   * The three states a Raft node can be in at any moment.                                                                                                                                                                                   
+   *                                                                                                                   
+   *   FOLLOWER  — default. Receives heartbeats from leader. If silent too long → CANDIDATE.                                                                                                                                                 
+   *   CANDIDATE — actively requesting votes. If majority granted → LEADER. If timeout → new election.
+   *   LEADER    — sends heartbeats and replicates writes to followers.                                                                                                                                                                      
+   */                                                                                                                  
+  public enum RaftState {                                                                                                                                                                                                                    
+      FOLLOWER,                                                                                                                                                                                                                              
+      CANDIDATE,                                                                                                                                                                                                                             
+      LEADER                                                                                                                                                                                                                                 
+  }
