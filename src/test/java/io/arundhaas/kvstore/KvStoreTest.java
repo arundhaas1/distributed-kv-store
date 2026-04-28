@@ -15,8 +15,6 @@ class KvStoreTest {
         return Files.createTempFile("kvstore-test-wal", ".log");
     }
 
-    // ─── Basic ops ─────────────────────────────────────────────────────────
-
     @Test
     void put_and_get_shouldStoreAndReturnValue() throws Exception {
         try (KvStore<String, Integer> store = new KvStore<>(tempWalPath().toString())) {
@@ -50,8 +48,6 @@ class KvStoreTest {
         }
     }
 
-    // ─── Null handling ─────────────────────────────────────────────────────
-
     @Test
     void put_shouldThrowException_whenKeyIsNull() throws Exception {
         try (KvStore<String, String> store = new KvStore<>(tempWalPath().toString())) {
@@ -78,8 +74,6 @@ class KvStoreTest {
             assertThrows(NullPointerException.class, () -> store.get(null));
         }
     }
-
-    // ─── Multi-key / mixed scenarios ───────────────────────────────────────
 
     @Test
     void put_multipleKeys_allAccessible() throws Exception {
@@ -123,8 +117,6 @@ class KvStoreTest {
             assertEquals("two", store.get(2));
         }
     }
-
-    // ─── WAL integration ───────────────────────────────────────────────────
 
     @Test
     void put_shouldAppendToWAL() throws Exception {
@@ -184,8 +176,6 @@ class KvStoreTest {
         assertEquals("PUT|k99|v99", lines.get(99));
     }
 
-    // ─── Lifecycle ─────────────────────────────────────────────────────────
-
     @Test
     void useAfterClose_shouldThrow() throws Exception {
         KvStore<String, String> store = new KvStore<>(tempWalPath().toString());
@@ -195,8 +185,6 @@ class KvStoreTest {
         // After close, the underlying WAL stream is dead — writes throw
         assertThrows(IOException.class, () -> store.put("k2", "v2"));
     }
-
-    // ─── Recovery: snapshot + WAL-tail hybrid ──────────────────────────────
 
     private Path snapPathFor(Path walPath) {
         return Path.of(walPath.toString() + ".snapshot");

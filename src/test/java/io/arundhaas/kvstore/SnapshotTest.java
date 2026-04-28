@@ -22,8 +22,6 @@ class SnapshotTest {
         return p;
     }
 
-    // ─── write — basics ─────────────────────────────────────────────────────
-
     @Test
     void write_thenLoad_shouldRoundTripData() throws Exception {
         Path snap = tempSnapshotPath();
@@ -56,8 +54,6 @@ class SnapshotTest {
         assertNotNull(loaded);
         assertTrue(loaded.isEmpty(), "Empty file → empty map");
     }
-
-    // ─── write — overwrite + atomicity ──────────────────────────────────────
 
     @Test
     void write_shouldOverwriteExistingSnapshot() throws Exception {
@@ -113,8 +109,6 @@ class SnapshotTest {
                 "Content should have changed atomically — no merge of old+new");
     }
 
-    // ─── load — missing/edge files ──────────────────────────────────────────
-
     @Test
     void load_shouldReturnEmptyMap_whenFileMissing() throws Exception {
         Path snap = tempSnapshotPath();
@@ -160,8 +154,6 @@ class SnapshotTest {
         Files.write(snap, "garbage".getBytes(StandardCharsets.UTF_8));
         assertNotNull(Snapshot.load(snap.toString()));
     }
-
-    // ─── value handling ─────────────────────────────────────────────────────
 
     @Test
     void write_shouldPersistEmptyStringValue() throws Exception {
@@ -211,8 +203,6 @@ class SnapshotTest {
         assertEquals(input, loaded);
     }
 
-    // ─── known limitation: pipe in key/value ────────────────────────────────
-
     @Test
     void write_valueContainingPipe_isCurrentlyLossy() throws Exception {
         // Documents a known limitation: the on-disk format uses '|' as delimiter
@@ -229,8 +219,6 @@ class SnapshotTest {
         // Specifically: load() takes parts[1] only, so we get the substring before the first pipe
         assertEquals("value", loaded.get("k"));
     }
-
-    // ─── volume ─────────────────────────────────────────────────────────────
 
     @Test
     void write_largeMap_10K_allEntriesPreserved() throws Exception {

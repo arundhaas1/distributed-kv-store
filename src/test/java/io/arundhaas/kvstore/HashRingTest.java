@@ -10,8 +10,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class HashRingTest {
 
-    // ─── Basic ─────────────────────────────────────────────────────────────
-
     @Test
     void singleNode_allKeysGoToIt() {
         HashRing ring = new HashRing();
@@ -50,8 +48,6 @@ class HashRingTest {
                 Arrays.asList("node-1", "node-2", "node-3")));
     }
 
-    // ─── Distribution ──────────────────────────────────────────────────────
-
     @Test
     void threeNodes_10kKeys_splitWithin10pct() {
         HashRing ring = new HashRing();
@@ -74,8 +70,6 @@ class HashRingTest {
                             + " (within +/-" + tolerance + ")");
         });
     }
-
-    // ─── Redistribution — the proof of consistent hashing ──────────────────
 
     @Test
     void removeNode_redistributesOnlyAffectedKeys() {
@@ -132,8 +126,6 @@ class HashRingTest {
         assertTrue(movedToNewNode > 0, "Adding node-3 should claim some keys");
         assertEquals(0, movedElsewhere, "Keys should ONLY move to the new node");
     }
-
-    // ─── Wrap-around sanity ────────────────────────────────────────────────
 
     @Test
     void wrapAround_doesNotCrash() {

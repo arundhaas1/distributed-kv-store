@@ -16,8 +16,6 @@ class WALTest {
         return Files.createTempFile("wal-test", ".log");
     }
 
-    // ─── Basic writes ──────────────────────────────────────────────────────
-
     @Test
     void append_writesSingleLine() throws IOException {
         Path path = tempWalPath();
@@ -60,8 +58,6 @@ class WALTest {
         assertEquals("PUT|k999|v999", lines.get(999));
     }
 
-    // ─── Null / empty handling ─────────────────────────────────────────────
-
     @Test
     void append_handlesNullValue() throws IOException {
         Path path = tempWalPath();
@@ -95,8 +91,6 @@ class WALTest {
         assertEquals("PUT||value", lines.get(0));
     }
 
-    // ─── Mixed ops ─────────────────────────────────────────────────────────
-
     @Test
     void append_mixedOps() throws IOException {
         Path path = tempWalPath();
@@ -114,8 +108,6 @@ class WALTest {
         assertEquals("DELETE|a|", lines.get(2));
         assertEquals("PUT|a|3", lines.get(3));
     }
-
-    // ─── Append-only durability ────────────────────────────────────────────
 
     @Test
     void append_isAppendOnly_doesNotOverwrite() throws IOException {
@@ -156,8 +148,6 @@ class WALTest {
         assertEquals(2, linesAfterSecond.size());
     }
 
-    // ─── Character encoding ────────────────────────────────────────────────
-
     @Test
     void append_writesUTF8() throws IOException {
         Path path = tempWalPath();
@@ -172,8 +162,6 @@ class WALTest {
         assertTrue(content.contains("café"));
         assertTrue(content.contains("🚀"));
     }
-
-    // ─── Lifecycle ─────────────────────────────────────────────────────────
 
     @Test
     void append_afterClose_shouldThrow() throws IOException {

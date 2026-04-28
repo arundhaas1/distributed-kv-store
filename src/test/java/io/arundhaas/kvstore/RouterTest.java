@@ -22,8 +22,6 @@ class RouterTest {
         return paths;
     }
 
-    // ─── Basics ────────────────────────────────────────────────────────────
-
     @Test
     void put_then_get_roundTripsThroughRouter() throws Exception {
         try (Router<String, String> router = new Router<>(threeNodePaths())) {
@@ -56,8 +54,6 @@ class RouterTest {
             assertThrows(NullPointerException.class, () -> router.delete(null));
         }
     }
-
-    // ─── Routing determinism + distribution ────────────────────────────────
 
     @Test
     void sameKey_alwaysRoutesToSameNode() throws Exception {
@@ -99,8 +95,6 @@ class RouterTest {
             assertTrue(nodesUsed.size() >= 2, "Routing should spread across multiple nodes");
         }
     }
-
-    // ─── Persistence — each node has its own WAL ────────────────────────────
 
     @Test
     void writesPersist_perNode_independently() throws Exception {
