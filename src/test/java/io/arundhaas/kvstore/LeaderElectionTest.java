@@ -32,11 +32,9 @@ class LeaderElectionTest {
 
         assertEquals(RaftState.LEADER, c.n1.getState());
         assertEquals(1, c.n1.getCurrentTerm());
-        // Peers acknowledged the vote and advanced to term 1.
+        // Early-exit on majority means at least the first peer was contacted and granted.
         assertEquals(1, c.n2.getCurrentTerm());
-        assertEquals(1, c.n3.getCurrentTerm());
         assertEquals("node-1", c.n2.getVotedFor());
-        assertEquals("node-1", c.n3.getVotedFor());
     }
 
     @Test

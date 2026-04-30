@@ -1,5 +1,7 @@
 package io.arundhaas.kvstore;
 
+import io.arundhaas.kvstore.Modals.AppendEntriesRequest;
+import io.arundhaas.kvstore.Modals.AppendEntriesResponse;
 import io.arundhaas.kvstore.Modals.RequestVoteRequest;
 import io.arundhaas.kvstore.Modals.RequestVoteResponse;
 import org.junit.jupiter.api.Test;
@@ -271,5 +273,102 @@ class RaftNodeTest {
         node.handleRequestVote(new RequestVoteRequest(0, "node-2", 0, 0));
 
         assertTrue(node.isElectionDeadlinePassed(), "stale-term reject must not reset deadline");
+    }
+
+    @Test
+    void handleAppendEntries_nullRequest_throws() {
+        RaftNode node = new RaftNode("node-1");
+        assertThrows(NullPointerException.class, () -> node.handleAppendEntries(null));
+    }
+
+    @Test
+    void handleAppendEntries_staleTerm_rejected() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeCandidate();   // currentTerm=1
+        AppendEntriesRequest req = new AppendEntriesRequest(0, "node-2");
+
+        AppendEntriesResponse resp = node.handleAppendEntries(req);
+
+        assertFalse(resp.isSuccess());
+        assertEquals(1, resp.getTerm());
+        assertEquals(RaftState.CANDIDATE, node.getState());  // unchanged
+    }
+
+    @Test
+    void handleAppendEntries_higherTerm_stepsDownAndAccepts() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeCandidate();   // term=1, votedFor=node-1
+
+        AppendEntriesResponse resp =
+            node.handleAppendEntries(new AppendEntriesRequest(5, "node-2"));
+
+        assertTrue(resp.isSuccess());
+        assertEquals(5, resp.getTerm());
+        assertEquals(RaftState.FOLLOWER, node.getState());
+        assertEquals(5, node.getCurrentTerm());
+        assertNull(node.getVotedFor());                      // cleared by becomeFollower
+    }
+
+    @Test
+    void handleAppendEntries_sameTermFollower_accepts() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeFollower(3);
+
+        AppendEntriesResponse resp =
+            node.handleAppendEntries(new AppendEntriesRequest(3, "node-2"));
+
+        assertTrue(resp.isSuccess());
+        assertEquals(3, resp.getTerm());
+        assertEquals(RaftState.FOLLOWER, node.getState());
+    }
+
+    @Test
+    void handleAppendEntries_sameTermCandidate_concedesAndBecomesFollower() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeCandidate();   // term=1, state=CANDIDATE
+
+        AppendEntriesResponse resp =
+            node.handleAppendEntries(new AppendEntriesRequest(1, "node-2"));
+
+        assertTrue(resp.isSuccess());
+        assertEquals(1, resp.getTerm());
+        assertEquals(RaftState.FOLLOWER, node.getState(),
+            "a candidate that hears from a same-term leader must concede");
+    }
+
+    @Test
+    void handleAppendEntries_acceptedRequest_resetsElectionDeadline() throws InterruptedException {
+        RaftNode node = new RaftNode("node-1");
+        Thread.sleep(310);
+        assertTrue(node.isElectionDeadlinePassed());
+
+        node.handleAppendEntries(new AppendEntriesRequest(1, "node-2"));
+
+        assertFalse(node.isElectionDeadlinePassed(),
+            "valid heartbeat must suppress election timer");
+    }
+
+    @Test
+    void handleAppendEntries_staleTerm_doesNotResetDeadline() throws InterruptedException {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeCandidate();   // term=1
+        Thread.sleep(310);
+        assertTrue(node.isElectionDeadlinePassed());
+
+        node.handleAppendEntries(new AppendEntriesRequest(0, "ghost"));
+
+        assertTrue(node.isElectionDeadlinePassed(),
+            "stale-term heartbeat must not extend our deadline");
+    }
+
+    @Test
+    void sendHeartbeats_nonLeader_isNoOp() {
+        RaftNode node = new RaftNode("node-1");   // FOLLOWER, no peers
+        long deadlineBefore = node.getElectionDeadlineMs();
+
+        node.sendHeartbeats();   // must do nothing
+
+        assertEquals(RaftState.FOLLOWER, node.getState());
+        assertEquals(deadlineBefore, node.getElectionDeadlineMs());
     }
 }

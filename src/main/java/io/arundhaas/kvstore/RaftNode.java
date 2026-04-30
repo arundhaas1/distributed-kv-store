@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
+import io.arundhaas.kvstore.Modals.AppendEntriesRequest;
+import io.arundhaas.kvstore.Modals.AppendEntriesResponse;
 import io.arundhaas.kvstore.Modals.RequestVoteRequest;
 import io.arundhaas.kvstore.Modals.RequestVoteResponse;
 
@@ -79,6 +81,42 @@ public class RaftNode {
 		
 		return new RequestVoteResponse(currentTerm, false);
 	}
+	
+	public AppendEntriesResponse handleAppendEntries(AppendEntriesRequest req) {
+		Objects.requireNonNull(req, "request required");
+
+		if(req.getTerm() < currentTerm) {
+			return new AppendEntriesResponse(currentTerm, false);
+		}
+
+		if(req.getTerm() > currentTerm) {
+			becomeFollower(req.getTerm());
+		}
+
+		if(state == RaftState.CANDIDATE) {
+			state = RaftState.FOLLOWER;
+		}
+
+		resetElectionDeadline();
+		return new AppendEntriesResponse(currentTerm, true);
+	}
+	
+	public void sendHeartbeats() {
+		if(state != RaftState.LEADER) return;
+		
+		AppendEntriesRequest req = new AppendEntriesRequest(currentTerm, nodeId);
+		
+		for(String peerId: peerIds) {
+			AppendEntriesResponse resp = transport.sendAppendEntries(peerId, req);
+			
+			if(resp.getTerm() > currentTerm) {
+				becomeFollower(resp.getTerm());
+				return;
+			}
+		}
+		
+		markHeartbeatSent();
+	}
 
 	public void becomeFollower(int newTerm) {
 		if (newTerm < currentTerm) {
@@ -107,6 +145,7 @@ public class RaftNode {
 			
 			if(state == RaftState.CANDIDATE && votes >= voteNeeded) {
 				becomeLeader();
+				return;
 			}
 		}
 	}
