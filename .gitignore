@@ -19,3 +19,7 @@ target/
 
 # Logs
 *.log
+
+# Demo scratch dirs (Main.java)
+data/
+data1/

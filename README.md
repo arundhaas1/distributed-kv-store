@@ -2,7 +2,7 @@
 
 A Java implementation of a distributed KV store built from first principles — consensus, durability, and sharding.
 
-> **Status:** 🚧 In active development · Day 8 of 14 · 65 tests green
+> **Status:** 🚧 In active development · Day 10 of 14 · 102 tests green
 
 ## Goals
 
@@ -55,8 +55,8 @@ A Java implementation of a distributed KV store built from first principles — 
 |  6  | Snapshot + WAL-tail hybrid recovery       | ✅     |
 |  7  | Consistent hashing ring                   | ✅     |
 |  8  | Multi-node routing (simulated cluster)    | ✅     |
-|  9  | Raft node state machine                   |        |
-| 10  | Raft leader election (RequestVote)        |        |
+|  9  | Raft node state machine                   | ✅     |
+| 10  | Raft leader election (RequestVote)        | ✅     |
 | 11  | Raft heartbeats (AppendEntries)           |        |
 | 12  | Raft log replication                      |        |
 | 13  | Failure tests (kill-leader, partition)    |        |
@@ -64,14 +64,17 @@ A Java implementation of a distributed KV store built from first principles — 
 
 ## Test coverage
 
-| Suite           | Tests | What it proves |
-| --------------- | ----: | -------------- |
-| `KvStoreTest`   |    22 | Basic ops, NPE, WAL integration, lifecycle, snapshot+WAL recovery contract |
-| `SnapshotTest`  |    16 | Round-trip, atomicity (no `.tmp` leak), overwrite, missing/malformed file handling, unicode, 10K volume |
-| `WALTest`       |    11 | Append, fsync, reset, close |
-| `HashRingTest`  |     8 | Distribution within ±10% across 3 nodes (10K keys), redistribution only of affected keys on add/remove |
-| `RouterTest`    |     8 | Route determinism, distribution, persistence per-node, close+reopen recovery |
-| **Total**       | **65** | |
+| Suite                         | Tests | What it proves |
+| ----------------------------- | ----: | -------------- |
+| `KvStoreTest`                 |    22 | Basic ops, NPE, WAL integration, lifecycle, snapshot+WAL recovery contract |
+| `SnapshotTest`                |    16 | Round-trip, atomicity (no `.tmp` leak), overwrite, missing/malformed file handling, unicode, 10K volume |
+| `WALTest`                     |    11 | Append, fsync, reset, close |
+| `HashRingTest`                |     8 | Distribution within ±10% across 3 nodes (10K keys), redistribution only of affected keys on add/remove |
+| `RouterTest`                  |     8 | Route determinism, distribution, persistence per-node, close+reopen recovery |
+| `RaftNodeTest`                |    28 | State transitions, term/votedFor invariants, election + heartbeat timers, RequestVote receiver rules |
+| `InProcessRaftTransportTest`  |     3 | Peer registration, RPC routing to handler, unknown-peer error |
+| `LeaderElectionTest`          |     6 | 3-node majority win, minority stay-candidate, higher-term step-down, leader handoff across terms |
+| **Total**                     | **102** | |
 
 ## Running Locally
 
@@ -79,7 +82,7 @@ A Java implementation of a distributed KV store built from first principles — 
 mvn clean test
 ```
 
-Expected: `Tests run: 65, Failures: 0, Errors: 0, Skipped: 0`.
+Expected: `Tests run: 102, Failures: 0, Errors: 0, Skipped: 0`.
 
 ## Notable design decisions
 
