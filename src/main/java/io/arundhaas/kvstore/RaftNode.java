@@ -1,7 +1,12 @@
 package io.arundhaas.kvstore;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
+
+import io.arundhaas.kvstore.Modals.RequestVoteRequest;
+import io.arundhaas.kvstore.Modals.RequestVoteResponse;
 
 public class RaftNode {
 
@@ -15,14 +20,25 @@ public class RaftNode {
 	private String votedFor;
 	private long electionDeadlineMs;
 	private long lastHeartbeatSentMs;
+	private final List<String> peerIds;
+	private final RaftTransport transport;
 
 	public RaftNode(String nodeId) {
-		this.nodeId = Objects.requireNonNull(nodeId, "nodeId required");
-		this.state = RaftState.FOLLOWER;
-		this.currentTerm = 0;
-		this.votedFor = null;
-		resetElectionDeadline();
+		 this(nodeId, Collections.emptyList(), null);
 	}
+	
+	 public RaftNode(String nodeId, List<String> peerIds, RaftTransport transport) {                                      
+	      this.nodeId = Objects.requireNonNull(nodeId, "nodeId required");
+	      this.peerIds = List.copyOf(Objects.requireNonNull(peerIds, "peerIds required"));                                                                                                                               
+	      if (!this.peerIds.isEmpty() && transport == null) {
+	          throw new IllegalArgumentException("transport required when peers exist");                                                                                                                                 
+	      }                                                                                                                
+	      this.transport = transport;                                                                                                                                                                                    
+	      this.state = RaftState.FOLLOWER;
+	      this.currentTerm = 0;                                                                                                                                                                                          
+	      this.votedFor = null;                                                                                            
+	      resetElectionDeadline();           
+	  }
 
 	public String getNodeId() {
 		return nodeId;
@@ -43,6 +59,26 @@ public class RaftNode {
 	public long getElectionDeadlineMs() {
 		return electionDeadlineMs;
 	}
+	
+	public RequestVoteResponse handleRequestVote(RequestVoteRequest req) {
+		Objects.requireNonNull(req, "request required");
+		
+		if(req.getTerm() < this.currentTerm) {
+			return new RequestVoteResponse(currentTerm, false);
+		}
+		
+		if(req.getTerm() > this.currentTerm) {
+			becomeFollower(req.getTerm());
+		}
+		
+		if(votedFor == null || votedFor.equals(req.getCandidateId())){
+			votedFor = req.getCandidateId();
+			resetElectionDeadline();
+			return new RequestVoteResponse(currentTerm, true);
+		}
+		
+		return new RequestVoteResponse(currentTerm, false);
+	}
 
 	public void becomeFollower(int newTerm) {
 		if (newTerm < currentTerm) {
@@ -52,6 +88,27 @@ public class RaftNode {
 		this.currentTerm = newTerm;
 		this.votedFor = null;
 		resetElectionDeadline();
+	}
+	
+	public void startElection() {
+		becomeCandidate();
+		int votes = 1;
+		int voteNeeded = ((peerIds.size()+1)/2)+1;
+		
+		RequestVoteRequest req = new RequestVoteRequest(currentTerm, nodeId, 0, 0);
+		for(String peerId : peerIds) {
+			RequestVoteResponse resp = transport.sendRequestForVote(peerId, req);
+			if(resp.getTerm() > currentTerm) {
+				becomeFollower(resp.getTerm());
+				return;
+			}
+			
+			if (resp.isVoteGranted()) votes++; 
+			
+			if(state == RaftState.CANDIDATE && votes >= voteNeeded) {
+				becomeLeader();
+			}
+		}
 	}
 
 	public void becomeCandidate() {
@@ -80,8 +137,8 @@ public class RaftNode {
 	}
 
 	public boolean isHeartbeatDue() {
-		if (state != RaftState.LEADER)
-			return false;
+		if (state != RaftState.LEADER) return false;
+		
 		return System.currentTimeMillis() - lastHeartbeatSentMs >= HEARTBEAT_INTERVAL_MS;
 	}
 

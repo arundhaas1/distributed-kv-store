@@ -1,5 +1,7 @@
 package io.arundhaas.kvstore;
 
+import io.arundhaas.kvstore.Modals.RequestVoteRequest;
+import io.arundhaas.kvstore.Modals.RequestVoteResponse;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -179,5 +181,95 @@ class RaftNodeTest {
         assertEquals(RaftState.FOLLOWER, node.getState());
         assertEquals(10, node.getCurrentTerm());
         assertFalse(node.isHeartbeatDue());
+    }
+
+    @Test
+    void handleRequestVote_nullRequest_throws() {
+        RaftNode node = new RaftNode("node-1");
+        assertThrows(NullPointerException.class, () -> node.handleRequestVote(null));
+    }
+
+    @Test
+    void handleRequestVote_staleTerm_rejected() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeCandidate();   // currentTerm=1
+        RequestVoteRequest req = new RequestVoteRequest(0, "node-2", 0, 0);
+
+        RequestVoteResponse resp = node.handleRequestVote(req);
+
+        assertFalse(resp.isVoteGranted());
+        assertEquals(1, resp.getTerm());
+    }
+
+    @Test
+    void handleRequestVote_higherTerm_stepsDownAndGrants() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeCandidate();  // term=1, votedFor=node-1
+        RequestVoteRequest req = new RequestVoteRequest(5, "node-2", 0, 0);
+
+        RequestVoteResponse resp = node.handleRequestVote(req);
+
+        assertTrue(resp.isVoteGranted());
+        assertEquals(5, resp.getTerm());
+        assertEquals(RaftState.FOLLOWER, node.getState());
+        assertEquals("node-2", node.getVotedFor());
+    }
+
+    @Test
+    void handleRequestVote_sameTerm_firstVote_granted() {
+        RaftNode node = new RaftNode("node-1");
+
+        RequestVoteResponse resp =
+            node.handleRequestVote(new RequestVoteRequest(1, "node-2", 0, 0));
+
+        assertTrue(resp.isVoteGranted());
+        assertEquals(1, resp.getTerm());
+        assertEquals("node-2", node.getVotedFor());
+    }
+
+    @Test
+    void handleRequestVote_sameTerm_alreadyVotedForOther_rejected() {
+        RaftNode node = new RaftNode("node-1");
+        node.handleRequestVote(new RequestVoteRequest(1, "node-2", 0, 0));
+
+        RequestVoteResponse resp =
+            node.handleRequestVote(new RequestVoteRequest(1, "node-3", 0, 0));
+
+        assertFalse(resp.isVoteGranted());
+        assertEquals(1, resp.getTerm());
+        assertEquals("node-2", node.getVotedFor());
+    }
+
+    @Test
+    void handleRequestVote_sameCandidate_idempotent() {
+        RaftNode node = new RaftNode("node-1");
+        RequestVoteRequest req = new RequestVoteRequest(1, "node-2", 0, 0);
+
+        assertTrue(node.handleRequestVote(req).isVoteGranted());
+        assertTrue(node.handleRequestVote(req).isVoteGranted());
+        assertEquals("node-2", node.getVotedFor());
+    }
+
+    @Test
+    void handleRequestVote_granted_resetsElectionDeadline() throws InterruptedException {
+        RaftNode node = new RaftNode("node-1");
+        Thread.sleep(310);
+        assertTrue(node.isElectionDeadlinePassed());
+
+        node.handleRequestVote(new RequestVoteRequest(1, "node-2", 0, 0));
+
+        assertFalse(node.isElectionDeadlinePassed());
+    }
+
+    @Test
+    void handleRequestVote_lowerTerm_doesNotResetElectionDeadline() throws InterruptedException {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeCandidate();   // term=1
+        Thread.sleep(310);
+        assertTrue(node.isElectionDeadlinePassed());
+
+        node.handleRequestVote(new RequestVoteRequest(0, "node-2", 0, 0));
+
+        assertTrue(node.isElectionDeadlinePassed(), "stale-term reject must not reset deadline");
     }
 }
