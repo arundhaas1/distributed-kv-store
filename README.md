@@ -98,6 +98,22 @@ Expected: `Tests run: 115, Failures: 0, Errors: 0, Skipped: 0`.
 - Replication factor > 1 (Day 12) — currently single replica per shard, so disk loss = data loss for that shard.
 - gRPC between nodes (post-Day 14) — today's "cluster" is in-process simulation.
 
+### Architecture pivot (Day 12 onward)
+
+Days 7–8 built consistent-hash sharding: 3 nodes, each owns a partition of the keyspace. That gives capacity but no fault tolerance — losing a node loses its shard. Days 9–14 pivot to single-Raft-group replication: 3 nodes, one leader, every key on every node. That gives fault tolerance but trades capacity (3× storage). Both designs remain in the codebase as the canonical capacity-vs-availability trade-off.
+
+### Planned next phase — sharded replication (multi-Raft)
+
+Production systems (CockroachDB, TiKV, Spanner) combine sharding and replication via per-shard Raft groups. After Day 14 ships single-Raft, the natural extension is:
+
+- Split the keyspace into N shards (the existing `HashRing` returns from dormancy as the shard locator).
+- Each shard runs its own independent Raft group with its own leader + 2 followers.
+- Each physical node hosts one or more `RaftNode` instances (one per shard it participates in), and plays leader for some shards, follower for others.
+- Adds: shard locator, leader directory (which node leads which shard), per-shard election/heartbeat timers.
+- Defers: cross-shard transactions (would need 2-phase commit on top of Raft), reconfiguration / shard splitting / merging.
+
+The core consensus types (`RaftNode`, `RaftLog`, RPC types, transport) are already shaped for multi-instance use, so they extend without redesign — the new code is mostly orchestration around them. **Estimated effort: weeks.** Treated here as documented next direction, not committed work.
+
 ## License
 
 MIT
