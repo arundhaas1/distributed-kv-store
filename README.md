@@ -2,7 +2,7 @@
 
 A Java implementation of a distributed KV store built from first principles — consensus, durability, and sharding.
 
-> **Status:** 🚧 In active development · Day 11 of 14 · 115 tests green
+> **Status:** 🚧 In active development · Day 12 of 14 · 143 tests green
 
 ## Goals
 
@@ -58,7 +58,7 @@ A Java implementation of a distributed KV store built from first principles — 
 |  9  | Raft node state machine                   | ✅     |
 | 10  | Raft leader election (RequestVote)        | ✅     |
 | 11  | Raft heartbeats (AppendEntries)           | ✅     |
-| 12  | Raft log replication                      |        |
+| 12  | Raft log replication                      | ✅     |
 | 13  | Failure tests (kill-leader, partition)    |        |
 | 14  | Benchmarks + architecture diagram         |        |
 
@@ -71,11 +71,13 @@ A Java implementation of a distributed KV store built from first principles — 
 | `WALTest`                     |    11 | Append, fsync, reset, close |
 | `HashRingTest`                |     8 | Distribution within ±10% across 3 nodes (10K keys), redistribution only of affected keys on add/remove |
 | `RouterTest`                  |     8 | Route determinism, distribution, persistence per-node, close+reopen recovery |
-| `RaftNodeTest`                |    36 | State transitions, term/votedFor invariants, election + heartbeat timers, RequestVote + AppendEntries receiver rules |
+| `RaftNodeTest`                |    43 | State transitions, term/votedFor invariants, election + heartbeat timers, RequestVote + AppendEntries receiver rules, log consistency, commit + apply, clientAppend guards |
 | `InProcessRaftTransportTest`  |     3 | Peer registration, RPC routing to handler, unknown-peer error |
 | `LeaderElectionTest`          |     6 | 3-node majority win, minority stay-candidate, higher-term step-down, leader handoff across terms |
 | `HeartbeatTest`               |     5 | Heartbeat suppresses follower elections, candidate concedes on same-term heartbeat, leader steps down on higher term, stale leader rejected |
-| **Total**                     | **115** | |
+| `RaftLogTest`                 |    13 | Append/get/lastIndex/lastTerm, matches (incl. empty-prefix sentinel), truncateAfter, from(start), null guards |
+| `LogReplicationTest`          |     8 | clientAppend rejects non-leader, replicates entry to all peers, leader applies committed entries, followers apply on next heartbeat, multi-write commit + ordering, lagging-peer catch-up, Figure-8 prior-term safety |
+| **Total**                     | **143** | |
 
 ## Running Locally
 
@@ -83,7 +85,7 @@ A Java implementation of a distributed KV store built from first principles — 
 mvn clean test
 ```
 
-Expected: `Tests run: 115, Failures: 0, Errors: 0, Skipped: 0`.
+Expected: `Tests run: 143, Failures: 0, Errors: 0, Skipped: 0`.
 
 ## Notable design decisions
 
