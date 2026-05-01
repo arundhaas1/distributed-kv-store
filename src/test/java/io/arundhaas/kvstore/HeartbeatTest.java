@@ -61,7 +61,7 @@ class HeartbeatTest {
     void candidateReceivesSameTermHeartbeat_concedesToLeader() {
         Cluster c = new Cluster();
         c.n2.becomeCandidate();   // n2 candidate at term 1
-        AppendEntriesRequest leaderHeartbeat = new AppendEntriesRequest(1, "node-1");
+        AppendEntriesRequest leaderHeartbeat = new AppendEntriesRequest(1, "node-1", 0, 0, java.util.List.of(), 0);
 
         c.n2.handleAppendEntries(leaderHeartbeat);
 
@@ -98,7 +98,7 @@ class HeartbeatTest {
         c.n2.becomeFollower(7); // n2 jumps to term 7 independently
 
         // Direct call so we observe the response, not just the side effects on n1.
-        var resp = c.n2.handleAppendEntries(new AppendEntriesRequest(1, "node-1"));
+        var resp = c.n2.handleAppendEntries(new AppendEntriesRequest(1, "node-1", 0, 0, java.util.List.of(), 0));
 
         assertFalse(resp.isSuccess());
         assertEquals(7, resp.getTerm());

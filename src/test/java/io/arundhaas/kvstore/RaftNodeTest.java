@@ -2,9 +2,12 @@ package io.arundhaas.kvstore;
 
 import io.arundhaas.kvstore.Modals.AppendEntriesRequest;
 import io.arundhaas.kvstore.Modals.AppendEntriesResponse;
+import io.arundhaas.kvstore.Modals.LogEntry;
 import io.arundhaas.kvstore.Modals.RequestVoteRequest;
 import io.arundhaas.kvstore.Modals.RequestVoteResponse;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -285,7 +288,7 @@ class RaftNodeTest {
     void handleAppendEntries_staleTerm_rejected() {
         RaftNode node = new RaftNode("node-1");
         node.becomeCandidate();   // currentTerm=1
-        AppendEntriesRequest req = new AppendEntriesRequest(0, "node-2");
+        AppendEntriesRequest req = new AppendEntriesRequest(0, "node-2", 0, 0, java.util.List.of(), 0);
 
         AppendEntriesResponse resp = node.handleAppendEntries(req);
 
@@ -300,7 +303,7 @@ class RaftNodeTest {
         node.becomeCandidate();   // term=1, votedFor=node-1
 
         AppendEntriesResponse resp =
-            node.handleAppendEntries(new AppendEntriesRequest(5, "node-2"));
+            node.handleAppendEntries(new AppendEntriesRequest(5, "node-2", 0, 0, java.util.List.of(), 0));
 
         assertTrue(resp.isSuccess());
         assertEquals(5, resp.getTerm());
@@ -315,7 +318,7 @@ class RaftNodeTest {
         node.becomeFollower(3);
 
         AppendEntriesResponse resp =
-            node.handleAppendEntries(new AppendEntriesRequest(3, "node-2"));
+            node.handleAppendEntries(new AppendEntriesRequest(3, "node-2", 0, 0, java.util.List.of(), 0));
 
         assertTrue(resp.isSuccess());
         assertEquals(3, resp.getTerm());
@@ -328,7 +331,7 @@ class RaftNodeTest {
         node.becomeCandidate();   // term=1, state=CANDIDATE
 
         AppendEntriesResponse resp =
-            node.handleAppendEntries(new AppendEntriesRequest(1, "node-2"));
+            node.handleAppendEntries(new AppendEntriesRequest(1, "node-2", 0, 0, java.util.List.of(), 0));
 
         assertTrue(resp.isSuccess());
         assertEquals(1, resp.getTerm());
@@ -342,7 +345,7 @@ class RaftNodeTest {
         Thread.sleep(310);
         assertTrue(node.isElectionDeadlinePassed());
 
-        node.handleAppendEntries(new AppendEntriesRequest(1, "node-2"));
+        node.handleAppendEntries(new AppendEntriesRequest(1, "node-2", 0, 0, java.util.List.of(), 0));
 
         assertFalse(node.isElectionDeadlinePassed(),
             "valid heartbeat must suppress election timer");
@@ -355,7 +358,7 @@ class RaftNodeTest {
         Thread.sleep(310);
         assertTrue(node.isElectionDeadlinePassed());
 
-        node.handleAppendEntries(new AppendEntriesRequest(0, "ghost"));
+        node.handleAppendEntries(new AppendEntriesRequest(0, "ghost", 0, 0, java.util.List.of(), 0));
 
         assertTrue(node.isElectionDeadlinePassed(),
             "stale-term heartbeat must not extend our deadline");
@@ -370,5 +373,101 @@ class RaftNodeTest {
 
         assertEquals(RaftState.FOLLOWER, node.getState());
         assertEquals(deadlineBefore, node.getElectionDeadlineMs());
+    }
+
+    @Test
+    void handleAppendEntries_consistencyMismatch_rejectsWithSameTerm() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeFollower(2);
+
+        // Receiver has empty log; leader claims prevLogIndex=5 → mismatch.
+        AppendEntriesResponse resp = node.handleAppendEntries(
+            new AppendEntriesRequest(2, "leader", 5, 1, List.of(), 0));
+
+        assertFalse(resp.isSuccess());
+        assertEquals(2, resp.getTerm());     // term unchanged, just a log mismatch
+    }
+
+    @Test
+    void handleAppendEntries_appendsNewEntries() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeFollower(1);
+
+        AppendEntriesResponse resp = node.handleAppendEntries(
+            new AppendEntriesRequest(1, "leader", 0, 0,
+                List.of(new LogEntry(1, 1, "PUT|a|1"),
+                        new LogEntry(2, 1, "PUT|b|2")),
+                0));
+
+        assertTrue(resp.isSuccess());
+        assertEquals(2, node.getLog().lastIndex());
+        assertEquals("PUT|a|1", node.getLog().get(1).getCommand());
+        assertEquals("PUT|b|2", node.getLog().get(2).getCommand());
+    }
+
+    @Test
+    void handleAppendEntries_truncatesOnConflict() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeFollower(1);
+        // Seed follower with stale entry from term 1.
+        node.handleAppendEntries(new AppendEntriesRequest(1, "old-leader", 0, 0,
+            List.of(new LogEntry(1, 1, "old-1"),
+                    new LogEntry(2, 1, "old-2")),
+            0));
+        assertEquals(2, node.getLog().lastIndex());
+
+        // New leader at term 3 sends new entry-2 (term 3) — conflict at index 2.
+        node.handleAppendEntries(new AppendEntriesRequest(3, "new-leader", 1, 1,
+            List.of(new LogEntry(2, 3, "new-2")),
+            0));
+
+        assertEquals(2, node.getLog().lastIndex());
+        assertEquals(3, node.getLog().get(2).getTerm());
+        assertEquals("new-2", node.getLog().get(2).getCommand());
+    }
+
+    @Test
+    void handleAppendEntries_advancesCommitIndex_andApplies() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeFollower(1);
+        node.handleAppendEntries(new AppendEntriesRequest(1, "leader", 0, 0,
+            List.of(new LogEntry(1, 1, "PUT|x|1"),
+                    new LogEntry(2, 1, "PUT|y|2")),
+            0));
+        assertEquals(0, node.getCommitIndex());
+        assertTrue(node.getStateMachine().isEmpty());
+
+        // Subsequent heartbeat carrying leaderCommit=2 commits both entries.
+        node.handleAppendEntries(new AppendEntriesRequest(1, "leader", 2, 1, List.of(), 2));
+
+        assertEquals(2, node.getCommitIndex());
+        assertEquals("1", node.getStateMachine().get("x"));
+        assertEquals("2", node.getStateMachine().get("y"));
+    }
+
+    @Test
+    void handleAppendEntries_leaderCommitClampedToLastIndex() {
+        RaftNode node = new RaftNode("node-1");
+        node.becomeFollower(1);
+        node.handleAppendEntries(new AppendEntriesRequest(1, "leader", 0, 0,
+            List.of(new LogEntry(1, 1, "PUT|a|1")), 0));
+
+        // Leader claims commit=99 but follower only has 1 entry — clamp to 1.
+        node.handleAppendEntries(new AppendEntriesRequest(1, "leader", 1, 1, List.of(), 99));
+
+        assertEquals(1, node.getCommitIndex());
+    }
+
+    @Test
+    void clientAppend_nonLeader_returnsFalse() {
+        RaftNode node = new RaftNode("node-1");
+        assertFalse(node.clientAppend("PUT|a|1"));
+        assertEquals(0, node.getLog().lastIndex());
+    }
+
+    @Test
+    void clientAppend_nullCommand_throws() {
+        RaftNode node = new RaftNode("node-1");
+        assertThrows(NullPointerException.class, () -> node.clientAppend(null));
     }
 }
