@@ -2,7 +2,7 @@
 
 A Java implementation of a distributed KV store built from first principles — consensus, durability, and sharding.
 
-> **Status:** 🚧 In active development · Day 13 of 14 · 151 tests green
+> **Status:** ✅ complete · 14/14 · 151 tests green
 
 ## Goals
 
@@ -17,7 +17,37 @@ A Java implementation of a distributed KV store built from first principles — 
 - **Build:** Maven
 - **Testing:** JUnit 5
 
-## Architecture (so far)
+## Architecture
+
+The codebase contains two designs side-by-side: the Day 7–8 sharded path (now dormant) and the Day 9–14 Raft path (the active design).
+
+### Active design — single Raft group, replicated KV (Days 9–14)
+
+```
+   client.clientAppend("PUT|user:42|Alice")
+                       │
+                       ▼
+                ┌────────────┐
+                │   leader   │  appends to local log, replicates,
+                │  (current) │  commits when majority confirms,
+                └─────┬──────┘  applies to state machine
+                      │  AppendEntries (term, prevLogIndex, entries[], leaderCommit)
+            ┌─────────┼─────────┐
+            ▼                   ▼
+       ┌────────┐          ┌────────┐
+       │follower│          │follower│
+       │RaftLog │          │RaftLog │   each node holds the same
+       │ state  │          │ state  │   RaftLog and state machine;
+       │machine │          │machine │   one is leader at any moment;
+       └────────┘          └────────┘   failure → re-election (Day 13)
+```
+
+- **RaftNode** — per-node Raft state machine. Tracks state (FOLLOWER/CANDIDATE/LEADER), term, votedFor, election + heartbeat timers, RaftLog, state machine, and per-peer `nextIndex` / `matchIndex` (leader only).
+- **RaftLog** — append-only `List<LogEntry>` with consistency-check helpers (`matches`, `truncateAfter`, `from`).
+- **Per-node state machine** — `Map<String,String>` updated by `applyCommitted()` after entries cross the commit threshold.
+- **InProcessRaftTransport** — RPC seam. Looks up the recipient `RaftNode` and calls `handleRequestVote` / `handleAppendEntries`. Day 13 added `disconnect` / `reconnect` / `partition` / `heal` for failure simulation.
+
+### Original design — consistent-hash sharding (Days 7–8, dormant)
 
 ```
    client.put("user:42", "Alice")
@@ -31,7 +61,6 @@ A Java implementation of a distributed KV store built from first principles — 
    ┌──────────┬──────────┬──────────┐
    │ KvStore  │ KvStore  │ KvStore  │
    │  node-1  │  node-2  │  node-3  │
-   │          │          │          │
    │  WAL +   │  WAL +   │  WAL +   │
    │ snapshot │ snapshot │ snapshot │
    └──────────┴──────────┴──────────┘
@@ -42,6 +71,8 @@ A Java implementation of a distributed KV store built from first principles — 
 - **KvStore** — single-node store. WAL append + fsync per write, periodic snapshots every 1000 writes, atomic temp+rename for snapshots.
 - **WAL** — line-delimited log, fsynced on every write. `reset()` truncates after a snapshot is durable.
 - **Snapshot** — pipe-delimited key/value file. Atomic rename so partial writes never corrupt prior snapshot.
+
+The pivot from sharding to Raft replication (in active design) trades capacity for fault tolerance — see [Future Improvements → Architecture pivot](#architecture-pivot-day-12-onward).
 
 ## Roadmap
 
@@ -60,7 +91,7 @@ A Java implementation of a distributed KV store built from first principles — 
 | 11  | Raft heartbeats (AppendEntries)           | ✅     |
 | 12  | Raft log replication                      | ✅     |
 | 13  | Failure tests (kill-leader, partition)    | ✅     |
-| 14  | Benchmarks + architecture diagram         |        |
+| 14  | Benchmarks + architecture diagram         | ✅     |
 
 ## Test coverage
 
@@ -88,6 +119,14 @@ mvn clean test
 
 Expected: `Tests run: 151, Failures: 0, Errors: 0, Skipped: 0`.
 
+### Benchmarks
+
+```bash
+mvn -q compile exec:java -Dexec.mainClass=io.arundhaas.kvstore.RaftBenchmark
+```
+
+See [BENCHMARKS.md](BENCHMARKS.md) for measurement methodology and sample numbers. **Important**: numbers are in-process, not network — use them as relative comparisons, not absolute throughput claims.
+
 ## Notable design decisions
 
 - **Atomic snapshot via temp+rename** — `Files.move(..., ATOMIC_MOVE, REPLACE_EXISTING)` ensures a crash mid-write never corrupts the previous snapshot.
@@ -97,9 +136,14 @@ Expected: `Tests run: 151, Failures: 0, Errors: 0, Skipped: 0`.
 
 ## Future improvements
 
-- Hybrid snapshot trigger (count + WAL-size + time) — currently count-only, idle workloads can accumulate stale WAL.
-- Replication factor > 1 (Day 12) — currently single replica per shard, so disk loss = data loss for that shard.
-- gRPC between nodes (post-Day 14) — today's "cluster" is in-process simulation.
+Architectural extensions deferred from the 14-day plan, ordered roughly by ROI for production deployment:
+
+- **Persistence of Raft state** — `currentTerm`, `votedFor`, and the `RaftLog` are in-memory today. The Raft paper requires these to survive crashes. Persisting the log alone (one file, append-only with fsync) closes most of the gap. ~100 lines.
+- **`RaftRunner` + thread safety** — election and heartbeat timers are predicates today; nothing automatically fires `startElection` or `sendHeartbeats` on a clock. A `ScheduledExecutorService` per node + `synchronized` on `RaftNode` methods makes the cluster self-driving. ~50 lines.
+- **Log compaction / state-machine snapshots** — the `RaftLog` grows forever. Production Raft snapshots the state machine and truncates committed log entries below the snapshot. Required for any long-running deployment.
+- **`KvStore` integration** — the Day 12 state machine is a `Map<String,String>` on `RaftNode`. Replacing the existing `KvStore.WAL` with the persisted `RaftLog` (or wiring `KvStore` as the state machine target) unifies the two persistence stories.
+- **gRPC transport** — replace `InProcessRaftTransport` with a real network transport. Adds RPC failure modes (timeout, connection refused) that the current synthetic-response model approximates.
+- **Hybrid snapshot trigger (count + WAL-size + time)** — currently count-only on the legacy `KvStore`; idle workloads can accumulate stale WAL.
 
 ### Architecture pivot (Day 12 onward)
 
