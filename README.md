@@ -2,7 +2,7 @@
 
 A Java implementation of a distributed KV store built from first principles — consensus, durability, and sharding.
 
-> **Status:** 🚧 In active development · Day 12 of 14 · 143 tests green
+> **Status:** 🚧 In active development · Day 13 of 14 · 151 tests green
 
 ## Goals
 
@@ -59,7 +59,7 @@ A Java implementation of a distributed KV store built from first principles — 
 | 10  | Raft leader election (RequestVote)        | ✅     |
 | 11  | Raft heartbeats (AppendEntries)           | ✅     |
 | 12  | Raft log replication                      | ✅     |
-| 13  | Failure tests (kill-leader, partition)    |        |
+| 13  | Failure tests (kill-leader, partition)    | ✅     |
 | 14  | Benchmarks + architecture diagram         |        |
 
 ## Test coverage
@@ -77,7 +77,8 @@ A Java implementation of a distributed KV store built from first principles — 
 | `HeartbeatTest`               |     5 | Heartbeat suppresses follower elections, candidate concedes on same-term heartbeat, leader steps down on higher term, stale leader rejected |
 | `RaftLogTest`                 |    13 | Append/get/lastIndex/lastTerm, matches (incl. empty-prefix sentinel), truncateAfter, from(start), null guards |
 | `LogReplicationTest`          |     8 | clientAppend rejects non-leader, replicates entry to all peers, leader applies committed entries, followers apply on next heartbeat, multi-write commit + ordering, lagging-peer catch-up, Figure-8 prior-term safety |
-| **Total**                     | **143** | |
+| `FailureTest`                 |     8 | Kill-leader recovery, minority halts, partition isolates stale leader, heal forces step-down, lagging peer catches up after reconnect, no win on minority side, double leader failure recovery |
+| **Total**                     | **151** | |
 
 ## Running Locally
 
@@ -85,7 +86,7 @@ A Java implementation of a distributed KV store built from first principles — 
 mvn clean test
 ```
 
-Expected: `Tests run: 143, Failures: 0, Errors: 0, Skipped: 0`.
+Expected: `Tests run: 151, Failures: 0, Errors: 0, Skipped: 0`.
 
 ## Notable design decisions
 
